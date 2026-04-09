@@ -1,0 +1,46 @@
+extensions:
+  jaeger_storage:
+    backends:
+      traces_storage:
+        memory:
+          max_traces: 100000
+
+  jaeger_query:
+    storage:
+      traces: traces_storage
+    base_path: /jaeger
+    grpc:
+      endpoint: 127.0.0.1:16685
+    http:
+      endpoint: 127.0.0.1:16686
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4327
+      http:
+        endpoint: 0.0.0.0:4328
+
+processors:
+  batch:
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: traces_storage
+
+service:
+  extensions: [jaeger_storage, jaeger_query]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8890
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [jaeger_storage_exporter]
