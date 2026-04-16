@@ -1,0 +1,116 @@
+server {
+    listen 80;
+    server_name otel.dfos.co;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name otel.dfos.co;
+
+    root /var/www/html;
+    index index.php index.html index.htm;
+
+    ssl_certificate     /etc/ssl/certs/STAR_dfos_co_fullchain.crt;
+    ssl_certificate_key /etc/ssl/key/custom.key;
+
+    client_max_body_size 500M;
+    server_tokens off;
+
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_tickets off;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Access-Control-Allow-Origin "*" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    if ($request_method ~* ^(TRACE|TRACK)$) {
+        return 403;
+    }
+
+    location = / {
+        return 301 /app/;
+    }
+
+    location /app/ {
+        try_files $uri $uri/ @app_rewrite;
+    }
+
+    location @app_rewrite {
+        rewrite ^/app/(.*)$ /app/index.php/$1 last;
+    }
+
+    location ~ ^/app/.*\.php($|/) {
+        fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+        include fastcgi.conf;
+        fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+
+        fastcgi_param SCRIPT_FILENAME /var/www/html$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param CI_ENV production;
+        fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+    }
+
+    location /grafana/ {
+        proxy_pass http://127.0.0.1:3000/grafana/;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Prefix /grafana;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_read_timeout 300;
+        proxy_send_timeout 300;
+    }
+
+    location /grafana/api/live/ {
+        proxy_pass http://127.0.0.1:3000/grafana/api/live/;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Prefix /grafana;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_read_timeout 300;
+        proxy_send_timeout 300;
+    }
+
+    location /jaeger/ {
+        proxy_pass http://127.0.0.1:16686/jaeger/;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Prefix /jaeger;
+
+        proxy_read_timeout 300;
+        proxy_send_timeout 300;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
